@@ -34,8 +34,9 @@
 namespace
 {
 constexpr double kPi = 3.14159265358979323846;
-constexpr int kDefaultOscPort = 9001;
+constexpr int kDefaultOscListenPort = 9001;
 constexpr int kDefaultVrcOscPort = 9000;
+constexpr const char* kConfigFileName = "config.json";
 constexpr const char* kSettingsFileName = "last-parameter-values.json";
 
 constexpr const char* kOscEnabled = "/avatar/parameters/VROffsetEnabled";
@@ -51,9 +52,11 @@ struct Options
     double amplitudeMeters = 0.3;
     double periodSeconds = 0.3;
     double fps = 120.0;
-    int oscPort = kDefaultOscPort;
+    int oscListenPort = kDefaultOscListenPort;
+    int vrcOscSendPort = kDefaultVrcOscPort;
     bool oscEnabled = true;
     bool updateSeated = true;
+    std::string configPath = kConfigFileName;
 };
 
 struct OscControls
@@ -146,40 +149,88 @@ void saveSettings( const OscControls& controls )
     }
 }
 
-double parsePositiveDouble( const char* value, const char* name )
+void writeDefaultConfig( const Options& options )
 {
-    char* end = nullptr;
-    const double parsed = std::strtod( value, &end );
-    if ( end == value || *end != '\0' || parsed <= 0.0 )
+    try
     {
-        throw std::runtime_error( std::string( name )
-                                  + " must be a positive number." );
+        nlohmann::json config;
+        config["amplitudeMeters"] = options.amplitudeMeters;
+        config["periodSeconds"] = options.periodSeconds;
+        config["fps"] = options.fps;
+        config["oscListenPort"] = options.oscListenPort;
+        config["vrcOscSendPort"] = options.vrcOscSendPort;
+        config["oscEnabled"] = options.oscEnabled;
+        config["updateSeated"] = options.updateSeated;
+
+        std::ofstream output( options.configPath );
+        output << config.dump( 2 ) << "\n";
+        std::cout << "Created default config at " << options.configPath
+                  << "\n";
     }
-    return parsed;
+    catch ( const std::exception& e )
+    {
+        std::cerr << "Warning: Could not create config " << options.configPath
+                  << ": " << e.what() << "\n";
+    }
 }
 
-double parseNonNegativeDouble( const char* value, const char* name )
+void loadConfig( Options& options )
 {
-    char* end = nullptr;
-    const double parsed = std::strtod( value, &end );
-    if ( end == value || *end != '\0' || parsed < 0.0 )
+    std::ifstream input( options.configPath );
+    if ( !input )
     {
-        throw std::runtime_error( std::string( name )
-                                  + " must be zero or a positive number." );
+        writeDefaultConfig( options );
+        return;
     }
-    return parsed;
-}
 
-int parsePort( const char* value, const char* name )
-{
-    char* end = nullptr;
-    const long parsed = std::strtol( value, &end, 10 );
-    if ( end == value || *end != '\0' || parsed <= 0 || parsed > 65535 )
+    try
     {
-        throw std::runtime_error( std::string( name )
-                                  + " must be a UDP port from 1 to 65535." );
+        nlohmann::json config;
+        input >> config;
+
+        options.amplitudeMeters
+            = config.value( "amplitudeMeters", options.amplitudeMeters );
+        if ( options.amplitudeMeters < 0.0 )
+        {
+            throw std::runtime_error( "amplitudeMeters must be >= 0." );
+        }
+        options.periodSeconds
+            = config.value( "periodSeconds", options.periodSeconds );
+        if ( options.periodSeconds <= 0.0 )
+        {
+            throw std::runtime_error( "periodSeconds must be > 0." );
+        }
+        options.fps = config.value( "fps", options.fps );
+        if ( options.fps <= 0.0 )
+        {
+            throw std::runtime_error( "fps must be > 0." );
+        }
+        options.oscListenPort
+            = config.value( "oscListenPort", options.oscListenPort );
+        if ( options.oscListenPort <= 0 || options.oscListenPort > 65535 )
+        {
+            throw std::runtime_error(
+                "oscListenPort must be from 1 to 65535." );
+        }
+        options.vrcOscSendPort
+            = config.value( "vrcOscSendPort", options.vrcOscSendPort );
+        if ( options.vrcOscSendPort <= 0
+             || options.vrcOscSendPort > 65535 )
+        {
+            throw std::runtime_error(
+                "vrcOscSendPort must be from 1 to 65535." );
+        }
+        options.oscEnabled = config.value( "oscEnabled", options.oscEnabled );
+        options.updateSeated
+            = config.value( "updateSeated", options.updateSeated );
+
+        std::cout << "Loaded config from " << options.configPath << "\n";
     }
-    return static_cast<int>( parsed );
+    catch ( const std::exception& e )
+    {
+        throw std::runtime_error( "Could not load config "
+                                  + options.configPath + ": " + e.what() );
+    }
 }
 
 Options parseOptions( int argc, char** argv )
@@ -198,51 +249,17 @@ Options parseOptions( int argc, char** argv )
             return argv[++i];
         };
 
-        if ( arg == "--amplitude" )
+        if ( arg == "--config" )
         {
-            options.amplitudeMeters
-                = parseNonNegativeDouble( requireValue( "--amplitude" ),
-                                          "--amplitude" );
-        }
-        else if ( arg == "--period" )
-        {
-            options.periodSeconds
-                = parsePositiveDouble( requireValue( "--period" ),
-                                       "--period" );
-        }
-        else if ( arg == "--fps" )
-        {
-            options.fps = parsePositiveDouble( requireValue( "--fps" ),
-                                               "--fps" );
-        }
-        else if ( arg == "--osc-port" )
-        {
-            options.oscPort = parsePort( requireValue( "--osc-port" ),
-                                         "--osc-port" );
-        }
-        else if ( arg == "--no-osc" )
-        {
-            options.oscEnabled = false;
-        }
-        else if ( arg == "--no-seated" )
-        {
-            options.updateSeated = false;
+            options.configPath = requireValue( "--config" );
         }
         else if ( arg == "--help" || arg == "-h" )
         {
             std::cout
                 << "Usage: vr-offset-animation [options]\n\n"
                 << "Options:\n"
-                << "  --amplitude METERS           Maximum travel in meters "
-                   "(default: 0.3)\n"
-                << "  --period SECONDS             Cycle duration when OSC "
-                   "speed is 1.0 (default: 0.3)\n"
-                << "  --fps FPS                    Update rate (default: 120)\n"
-                << "  --osc-port PORT              UDP port to listen on "
-                   "(default: 9001)\n"
-                << "  --no-osc                     Disable OSC listener\n"
-                << "  --no-seated                  Do not update seated zero "
-                   "pose\n";
+                << "  --config PATH                Config JSON path "
+                   "(default: config.json)\n";
             std::exit( 0 );
         }
         else
@@ -250,6 +267,7 @@ Options parseOptions( int argc, char** argv )
             throw std::runtime_error( "Unknown option: " + arg );
         }
     }
+    loadConfig( options );
     return options;
 }
 
@@ -392,7 +410,7 @@ void appendBigEndianFloat( std::vector<char>& message, float value )
     message.insert( message.end(), bytes, bytes + sizeof( bits ) );
 }
 
-bool sendOscMessageToVrc( const std::vector<char>& message )
+bool sendOscMessageToVrc( const std::vector<char>& message, int port )
 {
     const SocketHandle socketHandle = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP );
     if ( socketHandle == kInvalidSocket )
@@ -402,7 +420,7 @@ bool sendOscMessageToVrc( const std::vector<char>& message )
 
     sockaddr_in address{};
     address.sin_family = AF_INET;
-    address.sin_port = htons( static_cast<uint16_t>( kDefaultVrcOscPort ) );
+    address.sin_port = htons( static_cast<uint16_t>( port ) );
     inet_pton( AF_INET, "127.0.0.1", &address.sin_addr );
 
     const int result = sendto(
@@ -417,38 +435,38 @@ bool sendOscMessageToVrc( const std::vector<char>& message )
     return result >= 0;
 }
 
-void sendOscFloatToVrc( const char* address, double value )
+void sendOscFloatToVrc( const char* address, double value, int port )
 {
     std::vector<char> message;
     appendOscString( message, address );
     appendOscString( message, ",f" );
     appendBigEndianFloat( message, static_cast<float>( value ) );
-    if ( !sendOscMessageToVrc( message ) )
+    if ( !sendOscMessageToVrc( message, port ) )
     {
         std::cerr << "Warning: Could not send OSC float " << address << "\n";
     }
 }
 
-void sendOscBoolToVrc( const char* address, bool value )
+void sendOscBoolToVrc( const char* address, bool value, int port )
 {
     std::vector<char> message;
     appendOscString( message, address );
     appendOscString( message, value ? ",T" : ",F" );
-    if ( !sendOscMessageToVrc( message ) )
+    if ( !sendOscMessageToVrc( message, port ) )
     {
         std::cerr << "Warning: Could not send OSC bool " << address << "\n";
     }
 }
 
-void sendStartupSettingsToVrc( const OscControls& controls )
+void sendStartupSettingsToVrc( const OscControls& controls, int port )
 {
-    sendOscBoolToVrc( kOscEnabled, false );
-    sendOscFloatToVrc( kOscVertical, controls.requestedVertical );
-    sendOscFloatToVrc( kOscHorizontal, controls.requestedHorizontal );
-    sendOscFloatToVrc( kOscSpeed, controls.speed );
-    sendOscFloatToVrc( kOscAmplitude, controls.amplitude );
+    sendOscBoolToVrc( kOscEnabled, false, port );
+    sendOscFloatToVrc( kOscVertical, controls.requestedVertical, port );
+    sendOscFloatToVrc( kOscHorizontal, controls.requestedHorizontal, port );
+    sendOscFloatToVrc( kOscSpeed, controls.speed, port );
+    sendOscFloatToVrc( kOscAmplitude, controls.amplitude, port );
     std::cout << "Sent startup settings to VRChat OSC on UDP "
-              << kDefaultVrcOscPort << "\n";
+              << port << "\n";
 }
 
 void applyOscMessage( const char* data,
@@ -710,8 +728,9 @@ int main( int argc, char** argv )
         std::unique_ptr<OscReceiver> oscReceiver;
         if ( options.oscEnabled )
         {
-            oscReceiver = std::make_unique<OscReceiver>( options.oscPort );
-            sendStartupSettingsToVrc( controls );
+            oscReceiver
+                = std::make_unique<OscReceiver>( options.oscListenPort );
+            sendStartupSettingsToVrc( controls, options.vrcOscSendPort );
         }
 
         if ( !initializeOpenVr() )
@@ -730,7 +749,7 @@ int main( int argc, char** argv )
         if ( options.oscEnabled )
         {
             std::cout << "Listening for VRChat OSC on UDP "
-                      << options.oscPort << "\n"
+                      << options.oscListenPort << "\n"
                       << "  " << kOscEnabled << " bool\n"
                       << "  " << kOscVertical << " float -1..1\n"
                       << "  " << kOscHorizontal << " float -1..1\n"

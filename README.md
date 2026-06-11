@@ -61,28 +61,38 @@ If you built with `build_msvc.bat`:
 .\build\msvc\vr-offset-animation.exe
 ```
 
-Useful options:
+The app reads runtime config from `config.json` in the current working
+directory. If it does not exist, the app creates one with defaults:
 
-```powershell
-.\build\Release\vr-offset-animation.exe --amplitude 0.20 --period 4
+```json
+{
+  "amplitudeMeters": 0.3,
+  "periodSeconds": 0.3,
+  "fps": 120.0,
+  "oscListenPort": 9001,
+  "vrcOscSendPort": 9000,
+  "oscEnabled": true,
+  "updateSeated": true
+}
 ```
 
-OSC can choose the up/down plus forward/back direction:
+Use a different config path with:
 
 ```powershell
-.\build\Release\vr-offset-animation.exe --amplitude 0.20 --period 4
+.\build\Release\vr-offset-animation.exe --config my-config.json
 ```
 
-- `--amplitude`: maximum travel in meters before `VROffsetAmplitude` scaling. Default: `0.3`
-- `--period`: seconds per full cycle when `VROffsetSpeed` is `1.0`. Default: `0.3`
-- `--fps`: update rate. Default: `120`
-- `--osc-port`: UDP port to listen for VRChat OSC. Default: `9001`
-- `--no-osc`: disable OSC listening
-- `--no-seated`: only animate standing zero pose
+- `amplitudeMeters`: maximum travel in meters before `VROffsetAmplitude` scaling.
+- `periodSeconds`: seconds per full cycle when `VROffsetSpeed` is `1.0`.
+- `fps`: update rate.
+- `oscListenPort`: UDP port to listen for VRChat OSC.
+- `vrcOscSendPort`: UDP port to send startup values to VRChat.
+- `oscEnabled`: whether to listen for VRChat OSC.
+- `updateSeated`: whether to update seated zero pose.
 
 If your runtime cannot provide a seated zero pose, the app will print a warning
-and continue in standing-only mode. You can also force that behavior with
-`--no-seated`.
+and continue in standing-only mode. Set `updateSeated` to `false` to force that
+behavior.
 
 ## VRChat OSC
 
@@ -111,14 +121,14 @@ Behavior:
   Vertical maps to up/down, Horizontal maps to forward/back.
   If both values are `0`, the app keeps the previous non-zero direction.
 - `VROffsetSpeed`: `0` stops phase movement, `1` uses the configured
-  `--period`.
+  `periodSeconds`.
 - `VROffsetAmplitude`: scales the maximum meter amplitude set by
-  `--amplitude`.
+  `amplitudeMeters`.
 
 ## Saved Parameters
 
 On normal exit, the app saves these values to
-`vr-offset-animation-settings.json` in the current working directory:
+`last-parameter-values.json` in the current working directory:
 
 - `VROffsetVertical`
 - `VROffsetHorizontal`
@@ -134,8 +144,16 @@ and VRChat start from the same values.
 
 Example:
 
-```powershell
-.\build\Release\vr-offset-animation.exe --amplitude 0.20 --period 2.5
+```json
+{
+  "amplitudeMeters": 0.2,
+  "periodSeconds": 2.5,
+  "fps": 120.0,
+  "oscListenPort": 9001,
+  "vrcOscSendPort": 9000,
+  "oscEnabled": true,
+  "updateSeated": false
+}
 ```
 
 Then send:
