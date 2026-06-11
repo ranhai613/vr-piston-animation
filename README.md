@@ -8,9 +8,17 @@ It is intentionally conservative:
 - It updates the OpenVR chaperone working copy while the program is running.
 - It calls `ShowWorkingSetPreview()` so the working set is visible.
 - It does not commit changes.
-- On exit, it restores the original standing and seated zero poses, hides the preview, and reverts the working copy.
+- Each time it is enabled, it reinitializes OpenVR and then uses the current
+  working pose as its base. This refreshes the pose visible to this process so
+  recent OVRAS offsets can be included.
+- When disabled or exiting, it removes this app's current animation offset from
+  the current working pose and shows the resulting working set preview.
+- It does not call `RevertWorkingCopy()` at startup, because that would discard
+  this process's current working copy.
 
-Do not run this at the same time as OVRAS Space Offset, Room Setup, or another tool that edits the chaperone working copy.
+OVRAS compatibility note: this app refreshes OpenVR on each enable because the
+`IVRChaperoneSetup` state visible to this process can otherwise become stale
+after OVRAS changes offsets.
 
 ## Build
 

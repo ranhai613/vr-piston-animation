@@ -471,25 +471,90 @@ vr::HmdMatrix34_t withAnimatedOffset( const vr::HmdMatrix34_t& base,
     return result;
 }
 
-void restoreAndShutdown( const vr::HmdMatrix34_t& standingBase,
-                         const vr::HmdMatrix34_t& seatedBase,
-                         bool hasSeatedBase )
+bool readWorkingBases( vr::HmdMatrix34_t& standingBase,
+                       vr::HmdMatrix34_t& seatedBase,
+                       bool wantSeated,
+                       bool& hasSeatedBase )
 {
-    if ( vr::VRChaperoneSetup() )
+    hasSeatedBase = false;
+    if ( !vr::VRChaperoneSetup()->GetWorkingStandingZeroPoseToRawTrackingPose(
+             &standingBase ) )
     {
-        vr::VRChaperoneSetup()->SetWorkingStandingZeroPoseToRawTrackingPose(
-            &standingBase );
-
-        if ( hasSeatedBase )
-        {
-            vr::VRChaperoneSetup()->SetWorkingSeatedZeroPoseToRawTrackingPose(
-                &seatedBase );
-        }
-
-        vr::VRChaperoneSetup()->HideWorkingSetPreview();
-        vr::VRChaperoneSetup()->RevertWorkingCopy();
+        return false;
     }
 
+    if ( wantSeated )
+    {
+        hasSeatedBase
+            = vr::VRChaperoneSetup()->GetWorkingSeatedZeroPoseToRawTrackingPose(
+                &seatedBase );
+    }
+    return true;
+}
+
+bool initializeOpenVr()
+{
+    vr::EVRInitError initError = vr::VRInitError_None;
+    vr::VR_Init( &initError, vr::VRApplication_Background );
+    if ( initError != vr::VRInitError_None )
+    {
+        std::cerr << "OpenVR initialization failed: "
+                  << vr::VR_GetVRInitErrorAsEnglishDescription( initError )
+                  << "\n";
+        return false;
+    }
+
+    if ( !vr::VRChaperoneSetup() )
+    {
+        std::cerr << "IVRChaperoneSetup is unavailable after initialization.\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool reinitializeOpenVr()
+{
+    vr::VR_Shutdown();
+    return initializeOpenVr();
+}
+
+void removeOwnOffsetFromCurrentWorkingPose( double currentY,
+                                            double currentZ,
+                                            bool updateSeated )
+{
+    if ( !vr::VRChaperoneSetup() )
+    {
+        return;
+    }
+
+    vr::HmdMatrix34_t standingCurrent{};
+    vr::HmdMatrix34_t seatedCurrent{};
+    bool hasSeatedCurrent = false;
+    if ( !readWorkingBases(
+             standingCurrent, seatedCurrent, updateSeated, hasSeatedCurrent ) )
+    {
+        return;
+    }
+
+    const auto restoredStanding
+        = withAnimatedOffset( standingCurrent, -currentY, -currentZ );
+    vr::VRChaperoneSetup()->SetWorkingStandingZeroPoseToRawTrackingPose(
+        &restoredStanding );
+
+    if ( hasSeatedCurrent )
+    {
+        const auto restoredSeated
+            = withAnimatedOffset( seatedCurrent, -currentY, -currentZ );
+        vr::VRChaperoneSetup()->SetWorkingSeatedZeroPoseToRawTrackingPose(
+            &restoredSeated );
+    }
+
+    vr::VRChaperoneSetup()->ShowWorkingSetPreview();
+}
+
+void shutdownOpenVr()
+{
     vr::VR_Shutdown();
 }
 } // namespace
@@ -511,47 +576,14 @@ int main( int argc, char** argv )
             oscReceiver = std::make_unique<OscReceiver>( options.oscPort );
         }
 
-        vr::EVRInitError initError = vr::VRInitError_None;
-        vr::VR_Init( &initError, vr::VRApplication_Background );
-        if ( initError != vr::VRInitError_None )
+        if ( !initializeOpenVr() )
         {
-            std::cerr << "OpenVR init failed: "
-                      << vr::VR_GetVRInitErrorAsEnglishDescription( initError )
-                      << "\n";
             return 1;
         }
-
-        if ( !vr::VRChaperoneSetup() )
-        {
-            std::cerr << "IVRChaperoneSetup is unavailable.\n";
-            vr::VR_Shutdown();
-            return 1;
-        }
-
-        vr::VRChaperoneSetup()->RevertWorkingCopy();
 
         vr::HmdMatrix34_t standingBase{};
         vr::HmdMatrix34_t seatedBase{};
         bool hasSeatedBase = false;
-        if ( !vr::VRChaperoneSetup()->GetWorkingStandingZeroPoseToRawTrackingPose(
-                 &standingBase ) )
-        {
-            std::cerr << "Could not read standing zero pose.\n";
-            vr::VR_Shutdown();
-            return 1;
-        }
-
-        if ( options.updateSeated )
-        {
-            hasSeatedBase = vr::VRChaperoneSetup()
-                                ->GetWorkingSeatedZeroPoseToRawTrackingPose(
-                                    &seatedBase );
-            if ( !hasSeatedBase )
-            {
-                std::cerr << "Warning: Could not read seated zero pose. "
-                             "Continuing with standing-only animation.\n";
-            }
-        }
 
         std::cout << "Animating offset. Ctrl+C to stop.\n"
                   << "amplitude=" << options.amplitudeMeters
@@ -572,6 +604,9 @@ int main( int argc, char** argv )
         const auto frameInterval
             = std::chrono::duration<double>( 1.0 / options.fps );
         double phase = 0.0;
+        bool wasEnabled = false;
+        double currentY = 0.0;
+        double currentZ = 0.0;
 
         while ( !g_shouldStop.load() )
         {
@@ -587,11 +622,60 @@ int main( int argc, char** argv )
 
             if ( !controls.enabled )
             {
+                if ( wasEnabled )
+                {
+                    removeOwnOffsetFromCurrentWorkingPose(
+                        currentY, currentZ, options.updateSeated );
+                    currentY = 0.0;
+                    currentZ = 0.0;
+                    wasEnabled = false;
+                }
                 std::this_thread::sleep_until(
                     now + std::chrono::duration_cast<
                               std::chrono::steady_clock::duration>(
                               frameInterval ) );
                 continue;
+            }
+
+            if ( !wasEnabled )
+            {
+                // Re-initialize OpenVR to clear the working pose cache
+                if ( !reinitializeOpenVr() )
+                {
+                    std::this_thread::sleep_until(
+                        now + std::chrono::duration_cast<
+                                  std::chrono::steady_clock::duration>(
+                                  frameInterval ) );
+                    continue;
+                }
+                vr::HmdMatrix34_t enabledStandingBase{};
+                vr::HmdMatrix34_t enabledSeatedBase{};
+                bool enabledHasSeatedBase = false;
+                if ( !readWorkingBases( enabledStandingBase,
+                                        enabledSeatedBase,
+                                        options.updateSeated,
+                                        enabledHasSeatedBase ) )
+                {
+                    std::cerr << "Warning: Could not refresh standing zero pose. "
+                                 "Skipping this frame.\n";
+                    std::this_thread::sleep_until(
+                        now + std::chrono::duration_cast<
+                                  std::chrono::steady_clock::duration>(
+                                  frameInterval ) );
+                    continue;
+                }
+                standingBase = enabledStandingBase;
+                seatedBase = enabledSeatedBase;
+                hasSeatedBase = enabledHasSeatedBase;
+                currentY = 0.0;
+                currentZ = 0.0;
+                phase = 0.0;
+                if ( options.updateSeated && !hasSeatedBase )
+                {
+                    std::cerr << "Warning: Could not read seated zero pose. "
+                                 "Continuing with standing-only animation.\n";
+                }
+                wasEnabled = true;
             }
 
             phase += ( controls.speed / options.periodSeconds ) * 2.0 * kPi
@@ -614,6 +698,8 @@ int main( int argc, char** argv )
                 = options.amplitudeMeters * controls.amplitude * wave;
             const double y = amplitude * verticalDirection;
             const double z = amplitude * horizontalDirection;
+            currentY = y;
+            currentZ = z;
 
             const auto standingAnimated
                 = withAnimatedOffset( standingBase, y, z );
@@ -636,8 +722,13 @@ int main( int argc, char** argv )
                           frameInterval ) );
         }
 
-        restoreAndShutdown( standingBase, seatedBase, hasSeatedBase );
-        std::cout << "Restored original zero pose.\n";
+        if ( wasEnabled )
+        {
+            removeOwnOffsetFromCurrentWorkingPose(
+                currentY, currentZ, options.updateSeated );
+        }
+        shutdownOpenVr();
+        std::cout << "Removed own offset and shut down.\n";
         return 0;
     }
     catch ( const std::exception& e )
