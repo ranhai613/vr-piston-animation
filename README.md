@@ -97,7 +97,8 @@ Menu, then create or drive avatar parameters with these names:
 Behavior:
 
 - `VROffsetEnabled`: turns the animation on/off. The app starts disabled and
-  will not animate until it receives `true`.
+  will not animate until it receives `true`. While disabled, it does not write
+  offset changes to OpenVR.
 - `VROffsetVertical` and `VROffsetHorizontal`: form a 2D direction vector.
   Vertical maps to up/down, Horizontal maps to forward/back.
   If both values are `0`, the app keeps the previous non-zero direction.

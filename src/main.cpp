@@ -585,6 +585,15 @@ int main( int argc, char** argv )
                 oscReceiver->poll( controls );
             }
 
+            if ( !controls.enabled )
+            {
+                std::this_thread::sleep_until(
+                    now + std::chrono::duration_cast<
+                              std::chrono::steady_clock::duration>(
+                              frameInterval ) );
+                continue;
+            }
+
             phase += ( controls.speed / options.periodSeconds ) * 2.0 * kPi
                      * deltaSeconds;
 
@@ -600,7 +609,7 @@ int main( int argc, char** argv )
                     = controls.directionHorizontal / directionLength;
             }
 
-            const double wave = controls.enabled ? std::sin( phase ) : 0.0;
+            const double wave = std::sin( phase );
             const double amplitude
                 = options.amplitudeMeters * controls.amplitude * wave;
             const double y = amplitude * verticalDirection;
