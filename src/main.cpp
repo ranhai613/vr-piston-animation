@@ -21,16 +21,22 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
+
+#include "../../third-party/nlhomann/json.hpp"
 
 namespace
 {
 constexpr double kPi = 3.14159265358979323846;
 constexpr int kDefaultOscPort = 9001;
+constexpr int kDefaultVrcOscPort = 9000;
+constexpr const char* kSettingsFileName = "last-parameter-values.json";
 
 constexpr const char* kOscEnabled = "/avatar/parameters/VROffsetEnabled";
 constexpr const char* kOscVertical = "/avatar/parameters/VROffsetVertical";
@@ -44,7 +50,7 @@ struct Options
 {
     double amplitudeMeters = 0.3;
     double periodSeconds = 0.3;
-    double fps = 60.0;
+    double fps = 120.0;
     int oscPort = kDefaultOscPort;
     bool oscEnabled = true;
     bool updateSeated = true;
@@ -74,6 +80,70 @@ double clamp01( double value )
 double clampSigned01( double value )
 {
     return std::clamp( value, -1.0, 1.0 );
+}
+
+void normalizeRequestedDirection( OscControls& controls )
+{
+    const double length = std::hypot( controls.requestedVertical,
+                                      controls.requestedHorizontal );
+    if ( length > 0.000001 )
+    {
+        controls.directionVertical = controls.requestedVertical;
+        controls.directionHorizontal = controls.requestedHorizontal;
+    }
+}
+
+void loadSettings( OscControls& controls )
+{
+    std::ifstream input( kSettingsFileName );
+    if ( !input )
+    {
+        return;
+    }
+
+    try
+    {
+        nlohmann::json settings;
+        input >> settings;
+
+        controls.requestedVertical = clampSigned01(
+            settings.value( "vertical", controls.requestedVertical ) );
+        controls.requestedHorizontal = clampSigned01(
+            settings.value( "horizontal", controls.requestedHorizontal ) );
+        controls.speed = clamp01( settings.value( "speed", controls.speed ) );
+        controls.amplitude
+            = clamp01( settings.value( "amplitude", controls.amplitude ) );
+        controls.enabled = false;
+        normalizeRequestedDirection( controls );
+
+        std::cout << "Loaded settings from " << kSettingsFileName << "\n";
+    }
+    catch ( const std::exception& e )
+    {
+        std::cerr << "Warning: Could not load " << kSettingsFileName << ": "
+                  << e.what() << "\n";
+    }
+}
+
+void saveSettings( const OscControls& controls )
+{
+    try
+    {
+        nlohmann::json settings;
+        settings["vertical"] = controls.requestedVertical;
+        settings["horizontal"] = controls.requestedHorizontal;
+        settings["speed"] = controls.speed;
+        settings["amplitude"] = controls.amplitude;
+
+        std::ofstream output( kSettingsFileName );
+        output << settings.dump( 2 ) << "\n";
+        std::cout << "Saved settings to " << kSettingsFileName << "\n";
+    }
+    catch ( const std::exception& e )
+    {
+        std::cerr << "Warning: Could not save " << kSettingsFileName << ": "
+                  << e.what() << "\n";
+    }
 }
 
 double parsePositiveDouble( const char* value, const char* name )
@@ -164,10 +234,10 @@ Options parseOptions( int argc, char** argv )
                 << "Usage: vr-offset-animation [options]\n\n"
                 << "Options:\n"
                 << "  --amplitude METERS           Maximum travel in meters "
-                   "(default: 1.0)\n"
+                   "(default: 0.3)\n"
                 << "  --period SECONDS             Cycle duration when OSC "
-                   "speed is 1.0 (default: 0.5)\n"
-                << "  --fps FPS                    Update rate (default: 60)\n"
+                   "speed is 1.0 (default: 0.3)\n"
+                << "  --fps FPS                    Update rate (default: 120)\n"
                 << "  --osc-port PORT              UDP port to listen on "
                    "(default: 9001)\n"
                 << "  --no-osc                     Disable OSC listener\n"
@@ -303,6 +373,84 @@ bool parseOscFloat( const std::string& tags,
     return false;
 }
 
+void appendOscString( std::vector<char>& message, const std::string& value )
+{
+    message.insert( message.end(), value.begin(), value.end() );
+    message.push_back( '\0' );
+    while ( message.size() % 4 != 0 )
+    {
+        message.push_back( '\0' );
+    }
+}
+
+void appendBigEndianFloat( std::vector<char>& message, float value )
+{
+    uint32_t bits = 0;
+    std::memcpy( &bits, &value, sizeof( bits ) );
+    bits = htonl( bits );
+    const auto* bytes = reinterpret_cast<const char*>( &bits );
+    message.insert( message.end(), bytes, bytes + sizeof( bits ) );
+}
+
+bool sendOscMessageToVrc( const std::vector<char>& message )
+{
+    const SocketHandle socketHandle = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP );
+    if ( socketHandle == kInvalidSocket )
+    {
+        return false;
+    }
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons( static_cast<uint16_t>( kDefaultVrcOscPort ) );
+    inet_pton( AF_INET, "127.0.0.1", &address.sin_addr );
+
+    const int result = sendto(
+        socketHandle,
+        message.data(),
+        static_cast<int>( message.size() ),
+        0,
+        reinterpret_cast<sockaddr*>( &address ),
+        sizeof( address ) );
+
+    closeSocket( socketHandle );
+    return result >= 0;
+}
+
+void sendOscFloatToVrc( const char* address, double value )
+{
+    std::vector<char> message;
+    appendOscString( message, address );
+    appendOscString( message, ",f" );
+    appendBigEndianFloat( message, static_cast<float>( value ) );
+    if ( !sendOscMessageToVrc( message ) )
+    {
+        std::cerr << "Warning: Could not send OSC float " << address << "\n";
+    }
+}
+
+void sendOscBoolToVrc( const char* address, bool value )
+{
+    std::vector<char> message;
+    appendOscString( message, address );
+    appendOscString( message, value ? ",T" : ",F" );
+    if ( !sendOscMessageToVrc( message ) )
+    {
+        std::cerr << "Warning: Could not send OSC bool " << address << "\n";
+    }
+}
+
+void sendStartupSettingsToVrc( const OscControls& controls )
+{
+    sendOscBoolToVrc( kOscEnabled, false );
+    sendOscFloatToVrc( kOscVertical, controls.requestedVertical );
+    sendOscFloatToVrc( kOscHorizontal, controls.requestedHorizontal );
+    sendOscFloatToVrc( kOscSpeed, controls.speed );
+    sendOscFloatToVrc( kOscAmplitude, controls.amplitude );
+    std::cout << "Sent startup settings to VRChat OSC on UDP "
+              << kDefaultVrcOscPort << "\n";
+}
+
 void applyOscMessage( const char* data,
                       size_t size,
                       OscControls& controls )
@@ -336,24 +484,12 @@ void applyOscMessage( const char* data,
     if ( address == kOscVertical )
     {
         controls.requestedVertical = clampSigned01( value );
-        const double length = std::hypot( controls.requestedVertical,
-                                          controls.requestedHorizontal );
-        if ( length > 0.000001 )
-        {
-            controls.directionVertical = controls.requestedVertical;
-            controls.directionHorizontal = controls.requestedHorizontal;
-        }
+        normalizeRequestedDirection( controls );
     }
     else if ( address == kOscHorizontal )
     {
         controls.requestedHorizontal = clampSigned01( value );
-        const double length = std::hypot( controls.requestedVertical,
-                                          controls.requestedHorizontal );
-        if ( length > 0.000001 )
-        {
-            controls.directionVertical = controls.requestedVertical;
-            controls.directionHorizontal = controls.requestedHorizontal;
-        }
+        normalizeRequestedDirection( controls );
     }
     else if ( address == kOscSpeed )
     {
@@ -569,11 +705,13 @@ int main( int argc, char** argv )
         std::signal( SIGTERM, handleSignal );
 
         OscControls controls;
+        loadSettings( controls );
 
         std::unique_ptr<OscReceiver> oscReceiver;
         if ( options.oscEnabled )
         {
             oscReceiver = std::make_unique<OscReceiver>( options.oscPort );
+            sendStartupSettingsToVrc( controls );
         }
 
         if ( !initializeOpenVr() )
@@ -727,6 +865,7 @@ int main( int argc, char** argv )
             removeOwnOffsetFromCurrentWorkingPose(
                 currentY, currentZ, options.updateSeated );
         }
+        saveSettings( controls );
         shutdownOpenVr();
         std::cout << "Removed own offset and shut down.\n";
         return 0;

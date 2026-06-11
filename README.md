@@ -73,9 +73,9 @@ OSC can choose the up/down plus forward/back direction:
 .\build\Release\vr-offset-animation.exe --amplitude 0.20 --period 4
 ```
 
-- `--amplitude`: maximum travel in meters before `VROffsetAmplitude` scaling. Default: `1.0`
-- `--period`: seconds per full cycle when `VROffsetSpeed` is `1.0`. Default: `0.5`
-- `--fps`: update rate. Default: `60`
+- `--amplitude`: maximum travel in meters before `VROffsetAmplitude` scaling. Default: `0.3`
+- `--period`: seconds per full cycle when `VROffsetSpeed` is `1.0`. Default: `0.3`
+- `--fps`: update rate. Default: `120`
 - `--osc-port`: UDP port to listen for VRChat OSC. Default: `9001`
 - `--no-osc`: disable OSC listening
 - `--no-seated`: only animate standing zero pose
@@ -114,6 +114,23 @@ Behavior:
   `--period`.
 - `VROffsetAmplitude`: scales the maximum meter amplitude set by
   `--amplitude`.
+
+## Saved Parameters
+
+On normal exit, the app saves these values to
+`vr-offset-animation-settings.json` in the current working directory:
+
+- `VROffsetVertical`
+- `VROffsetHorizontal`
+- `VROffsetSpeed`
+- `VROffsetAmplitude`
+
+`VROffsetEnabled` is not saved. On startup it is always treated as `false`.
+
+On the next startup, the app loads the JSON file and sends the loaded values to
+VRChat on UDP `9000`, along with `VROffsetEnabled = false`. This intentionally
+overwrites avatar menu values changed while the app was not running, so the app
+and VRChat start from the same values.
 
 Example:
 
