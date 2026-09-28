@@ -30,7 +30,9 @@
 #include <vector>
 
 #include <json.hpp>
+#include "app_paths.h"
 #include "steamvr_registration.h"
+#include "tray_icon.h"
 
 namespace
 {
@@ -256,13 +258,15 @@ Options parseOptions( int argc, char** argv )
         }
         else if ( arg == "--help" || arg == "-h" )
         {
-            std::cout
-                << "Usage: vr-piston-animation [options]\n\n"
-                << "Options:\n"
-                << "  --config PATH                Config JSON path "
-                   "(default: config.json)\n"
-                << "  --install-steamvr            Register the SteamVR app manifest\n"
-                << "  --uninstall-steamvr          Remove the SteamVR app manifest\n";
+            MessageBoxW(
+                nullptr,
+                L"Usage: vr-piston-animation [options]\n\n"
+                L"Options:\n"
+                L"  --config PATH       Config JSON path (default: config.json)\n"
+                L"  --install-steamvr   Register the SteamVR app manifest\n"
+                L"  --uninstall-steamvr Remove the SteamVR app manifest",
+                L"VR Piston Animation",
+                MB_OK | MB_ICONINFORMATION );
             std::exit( 0 );
         }
         else
@@ -716,7 +720,7 @@ void shutdownOpenVr()
 }
 } // namespace
 
-int main( int argc, char** argv )
+int runApplication( int argc, char** argv )
 {
     try
     {
@@ -752,6 +756,8 @@ int main( int argc, char** argv )
             return 1;
         }
 
+        TrayIcon tray( g_shouldStop, getApplicationLogPath() );
+
         vr::HmdMatrix34_t standingBase{};
         vr::HmdMatrix34_t seatedBase{};
         bool hasSeatedBase = false;
@@ -781,6 +787,12 @@ int main( int argc, char** argv )
 
         while ( !g_shouldStop.load() )
         {
+            tray.processMessages();
+            if ( g_shouldStop.load() )
+            {
+                break;
+            }
+
             const auto now = std::chrono::steady_clock::now();
             const double deltaSeconds
                 = std::chrono::duration<double>( now - lastFrame ).count();
@@ -790,6 +802,7 @@ int main( int argc, char** argv )
             {
                 oscReceiver->poll( controls );
             }
+            tray.setAnimating( controls.enabled );
 
             if ( !controls.enabled )
             {

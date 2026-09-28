@@ -10,9 +10,11 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "vr-piston-animation requires a 64-bit Windows build.")
 endif()
 
-add_executable(vr-piston-animation
+add_executable(vr-piston-animation WIN32
     src/main.cpp
     src/steamvr_registration.cpp
+    src/tray_icon.cpp
+    src/windows_entry.cpp
 )
 
 target_compile_features(vr-piston-animation PRIVATE cxx_std_17)
@@ -25,10 +27,12 @@ target_include_directories(vr-piston-animation PRIVATE
 target_link_libraries(vr-piston-animation PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/third-party/openvr/lib/win64/openvr_api.lib
     ws2_32
+    shell32
+    user32
 )
 
 if(MINGW)
-    target_link_options(vr-piston-animation PRIVATE -static)
+    target_link_options(vr-piston-animation PRIVATE -static -municode)
 endif()
 
 add_custom_command(TARGET vr-piston-animation POST_BUILD

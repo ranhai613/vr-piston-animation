@@ -10,9 +10,11 @@ cl /nologo /EHsc /std:c++17 /W4 ^
   /I "%ROOT%third-party\openvr\headers" ^
   /I "%ROOT%third-party\nlhomann" ^
   "%ROOT%src\main.cpp" ^
+  "%ROOT%src\tray_icon.cpp" ^
+  "%ROOT%src\windows_entry.cpp" ^
   "%ROOT%src\steamvr_registration.cpp" ^
   /Fe:"%OUT%\vr-piston-animation.exe" ^
-  /link "%ROOT%third-party\openvr\lib\win64\openvr_api.lib" ws2_32.lib
+  /link "%ROOT%third-party\openvr\lib\win64\openvr_api.lib" ws2_32.lib shell32.lib user32.lib /SUBSYSTEM:WINDOWS
 
 if errorlevel 1 exit /b %errorlevel%
 

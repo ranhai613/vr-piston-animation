@@ -111,11 +111,16 @@ the installer cannot update its registration; the local files can still be
 removed, but SteamVR may retain a stale app entry.
 
 The required Windows OpenVR SDK files and the JSON header are included under
-`third-party`, so this directory builds independently of its parent
-repository. Each build method copies `openvr_api.dll` and the SteamVR manifest
+`third-party`. Each build method copies `openvr_api.dll` and the SteamVR manifest
 beside the executable.
 
 ## Run
+
+The app stays in the Windows notification
+area. Right-click its tray icon to check whether animation is active, open the
+log, or exit. Exiting restores the app's current offset and saves its parameter
+values. Startup errors are shown in a dialog; detailed output is written to
+`%LOCALAPPDATA%\VR Piston Animation\Logs\vr-piston-animation.log`.
 
 ```powershell
 .\build\Release\vr-piston-animation.exe
@@ -232,5 +237,4 @@ Then send:
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). The
-licenses for third-party dependencies are provided in `third-party`.
+This project is licensed under the [MIT License](LICENSE). The licenses for third-party dependencies are provided in `third-party`.
