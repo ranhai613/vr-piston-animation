@@ -30,6 +30,7 @@
 #include <vector>
 
 #include <json.hpp>
+#include "steamvr_registration.h"
 
 namespace
 {
@@ -259,7 +260,9 @@ Options parseOptions( int argc, char** argv )
                 << "Usage: vr-piston-animation [options]\n\n"
                 << "Options:\n"
                 << "  --config PATH                Config JSON path "
-                   "(default: config.json)\n";
+                   "(default: config.json)\n"
+                << "  --install-steamvr            Register the SteamVR app manifest\n"
+                << "  --uninstall-steamvr          Remove the SteamVR app manifest\n";
             std::exit( 0 );
         }
         else
@@ -717,6 +720,17 @@ int main( int argc, char** argv )
 {
     try
     {
+        if ( argc == 2 && std::string( argv[1] ) == "--install-steamvr" )
+        {
+            steamvr_registration::installManifest();
+            return 0;
+        }
+        if ( argc == 2 && std::string( argv[1] ) == "--uninstall-steamvr" )
+        {
+            steamvr_registration::uninstallManifest();
+            return 0;
+        }
+
         const Options options = parseOptions( argc, argv );
 
         std::signal( SIGINT, handleSignal );

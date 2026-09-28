@@ -12,6 +12,7 @@ endif()
 
 add_executable(vr-piston-animation
     src/main.cpp
+    src/steamvr_registration.cpp
 )
 
 target_compile_features(vr-piston-animation PRIVATE cxx_std_17)
@@ -26,8 +27,15 @@ target_link_libraries(vr-piston-animation PRIVATE
     ws2_32
 )
 
+if(MINGW)
+    target_link_options(vr-piston-animation PRIVATE -static)
+endif()
+
 add_custom_command(TARGET vr-piston-animation POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_LIST_DIR}/third-party/openvr/bin/win64/openvr_api.dll
         $<TARGET_FILE_DIR:vr-piston-animation>/openvr_api.dll
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_LIST_DIR}/steamvr/manifest.vrmanifest
+        $<TARGET_FILE_DIR:vr-piston-animation>/manifest.vrmanifest
 )

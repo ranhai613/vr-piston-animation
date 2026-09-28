@@ -1,0 +1,17 @@
+{
+  "source": "builtin",
+  "applications": [
+    {
+      "app_key": "vr-piston-animation",
+      "launch_type": "binary",
+      "binary_path_windows": "vr-piston-animation.exe",
+      "is_dashboard_overlay": true,
+      "strings": {
+        "en_us": {
+          "name": "VR Piston Animation",
+          "description": "VRChat OSC controlled chaperone offset animation"
+        }
+      }
+    }
+  ]
+}

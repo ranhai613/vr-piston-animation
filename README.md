@@ -1,6 +1,6 @@
 # VR Piston Animation
 
-Tiny OpenVR test app that animates the chaperone working zero pose. It can run
+Tiny OpenVR app that animates the chaperone working zero pose. It can run
 from command-line values or be controlled by VRChat OSC.
 
 It is intentionally conservative:
@@ -74,16 +74,46 @@ cmake -S . -B build/mingw -G Ninja \
 cmake --build build/mingw
 ```
 
-Run the executable from the UCRT64 terminal so the MinGW runtime libraries are
-available on `PATH`:
+The MinGW build links its runtime statically, so the executable can be launched
+outside the UCRT64 terminal. The OpenVR DLL remains beside the executable.
 
 ```sh
 ./build/mingw/vr-piston-animation.exe
 ```
 
+## SteamVR startup
+
+The installer registers the app with SteamVR and enables startup by default.
+You can change this in SteamVR under **Settings > Startup / Shutdown > Choose
+startup overlay apps**. Updates preserve your existing startup preference.
+
+## Installer
+
+Install NSIS 3 or later. After building, run `makensis` from this directory.
+For the Visual Studio build:
+
+```powershell
+makensis installer\installer.nsi
+```
+
+For the MinGW build:
+
+```powershell
+makensis /DAPP_BUILD_DIR=build/mingw installer\installer.nsi
+```
+
+If you used `build_msvc.bat`, pass `build/msvc` as `APP_BUILD_DIR`. The
+installer is written to `build\VR-Piston-Animation-Setup.exe`. It registers the
+SteamVR manifest and the uninstaller removes that registration. The app appears
+in SteamVR's startup overlay list; controller action bindings are not needed
+for OSC control. Close the app before uninstalling it. If SteamVR is unavailable,
+the installer cannot update its registration; the local files can still be
+removed, but SteamVR may retain a stale app entry.
+
 The required Windows OpenVR SDK files and the JSON header are included under
 `third-party`, so this directory builds independently of its parent
-repository. Both build methods copy `openvr_api.dll` beside the executable.
+repository. Each build method copies `openvr_api.dll` and the SteamVR manifest
+beside the executable.
 
 ## Run
 
@@ -199,3 +229,8 @@ Then send:
 - `VROffsetHorizontal = 0.0`
 - `VROffsetSpeed = 0.5`
 - `VROffsetAmplitude = 0.75`
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). The
+licenses for third-party dependencies are provided in `third-party`.
