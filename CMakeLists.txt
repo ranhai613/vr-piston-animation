@@ -1,28 +1,33 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(vr_offset_animation LANGUAGES CXX)
+project(vr_piston_animation LANGUAGES CXX)
 
-add_executable(vr-offset-animation
+if(NOT WIN32)
+    message(FATAL_ERROR "vr-piston-animation can only be built on Windows.")
+endif()
+
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "vr-piston-animation requires a 64-bit Windows build.")
+endif()
+
+add_executable(vr-piston-animation
     src/main.cpp
 )
 
-target_compile_features(vr-offset-animation PRIVATE cxx_std_17)
+target_compile_features(vr-piston-animation PRIVATE cxx_std_17)
 
-target_include_directories(vr-offset-animation PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/../third-party/openvr/headers
+target_include_directories(vr-piston-animation PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/third-party/openvr/headers
+    ${CMAKE_CURRENT_LIST_DIR}/third-party/nlhomann
 )
 
-if(WIN32)
-    target_link_libraries(vr-offset-animation PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/../third-party/openvr/lib/win64/openvr_api.lib
-        ws2_32
-    )
-elseif(APPLE)
-    target_link_libraries(vr-offset-animation PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/../third-party/openvr/lib/osx32/openvr_api.dylib
-    )
-else()
-    target_link_libraries(vr-offset-animation PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/../third-party/openvr/lib/linux64/libopenvr_api.so
-    )
-endif()
+target_link_libraries(vr-piston-animation PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/third-party/openvr/lib/win64/openvr_api.lib
+    ws2_32
+)
+
+add_custom_command(TARGET vr-piston-animation POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_LIST_DIR}/third-party/openvr/bin/win64/openvr_api.dll
+        $<TARGET_FILE_DIR:vr-piston-animation>/openvr_api.dll
+)

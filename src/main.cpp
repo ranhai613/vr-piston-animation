@@ -29,7 +29,7 @@
 #include <thread>
 #include <vector>
 
-#include "../../third-party/nlhomann/json.hpp"
+#include <json.hpp>
 
 namespace
 {
@@ -256,7 +256,7 @@ Options parseOptions( int argc, char** argv )
         else if ( arg == "--help" || arg == "-h" )
         {
             std::cout
-                << "Usage: vr-offset-animation [options]\n\n"
+                << "Usage: vr-piston-animation [options]\n\n"
                 << "Options:\n"
                 << "  --config PATH                Config JSON path "
                    "(default: config.json)\n";

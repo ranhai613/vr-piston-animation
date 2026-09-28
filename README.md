@@ -1,4 +1,4 @@
-# VR Offset Animation
+# VR Piston Animation
 
 Tiny OpenVR test app that animates the chaperone working zero pose. It can run
 from command-line values or be controlled by VRChat OSC.
@@ -21,6 +21,9 @@ OVRAS compatibility note: this app refreshes OpenVR on each enable because the
 after OVRAS changes offsets.
 
 ## Build
+
+This project supports Windows x64 builds only. CMake configuration on other
+operating systems stops with an error.
 
 If you have Visual Studio 2022 installed, use the Visual Studio generator from
 PowerShell:
@@ -47,18 +50,51 @@ You can also build directly from a Visual Studio x64 Developer Command Prompt:
 build_msvc.bat
 ```
 
-The executable links against the OpenVR import library already present in this repository. At runtime, Windows also needs `openvr_api.dll` beside the executable or somewhere in `PATH`.
+### MinGW-w64 GCC (MSYS2 UCRT64)
+
+Install [MSYS2](https://www.msys2.org/), open the **UCRT64** terminal, and
+install the x64 GCC, CMake, and Ninja packages:
+
+```sh
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+```
+
+In that terminal, change to this directory and confirm GCC targets x64 Windows:
+
+```sh
+g++ -dumpmachine
+```
+
+The output should be `x86_64-w64-mingw32`. Then configure and build with Ninja:
+
+```sh
+cmake -S . -B build/mingw -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_COMPILER=g++
+cmake --build build/mingw
+```
+
+Run the executable from the UCRT64 terminal so the MinGW runtime libraries are
+available on `PATH`:
+
+```sh
+./build/mingw/vr-piston-animation.exe
+```
+
+The required Windows OpenVR SDK files and the JSON header are included under
+`third-party`, so this directory builds independently of its parent
+repository. Both build methods copy `openvr_api.dll` beside the executable.
 
 ## Run
 
 ```powershell
-.\build\Release\vr-offset-animation.exe
+.\build\Release\vr-piston-animation.exe
 ```
 
 If you built with `build_msvc.bat`:
 
 ```powershell
-.\build\msvc\vr-offset-animation.exe
+.\build\msvc\vr-piston-animation.exe
 ```
 
 The app reads runtime config from `config.json` in the current working
@@ -79,7 +115,7 @@ directory. If it does not exist, the app creates one with defaults:
 Use a different config path with:
 
 ```powershell
-.\build\Release\vr-offset-animation.exe --config my-config.json
+.\build\Release\vr-piston-animation.exe --config my-config.json
 ```
 
 - `amplitudeMeters`: maximum travel in meters before `VROffsetAmplitude` scaling.
